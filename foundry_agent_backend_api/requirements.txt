@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pyjwt
+cryptography
+requests
+azure-ai-projects>=2.0.0b1
+python-dotenv

@@ -1,0 +1,20 @@
+[project]
+name = "af_mcp_server"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp",
+    "azure-search-documents",
+    "azure-identity",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "httpx[socks,http2]",
+    "psycopg",
+    "psycopg_pool",
+    "pydantic"
+]
+
+[tool.uv]
+prerelease = "disallow"

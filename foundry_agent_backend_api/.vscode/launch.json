@@ -1,0 +1,35 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+            "name": "Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "purpose": ["debug-in-terminal"]
+        },
+
+        {
+            "name": "fastapi debug",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "--app-dir", "..",
+                "foundry_agent_server:app",
+                "--host", "0.0.0.0",
+                "--port", "8765"
+            ],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "subProcess": true,
+            "justMyCode": false
+        },
+        
+        
+    ]
+  }
+  
