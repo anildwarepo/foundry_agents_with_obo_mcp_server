@@ -13,7 +13,8 @@ aiohttp
 azure-servicebus==7.12.3
 psycopg
 psycopg_pool
-fastmcp
+fastmcp==3.0.0b1
 azure-search-documents
 azure-ai-evaluation
 pydantic
+httpx==0.28.1

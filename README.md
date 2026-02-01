@@ -39,6 +39,11 @@ The **On-Behalf-Of (OBO) authentication flow** allows Foundry Agents to access t
 
 1. **Atlassian Integration**: A custom MCP server that wraps Atlassian Jira and Confluence REST APIs with OBO token validation
 2. **Microsoft Fabric Integration**: Using the Fabric Data Agent MCP tool with OBO flow to enforce row-level security on Lakehouse data
+3. **Tool Level Authorization**: Use MCP Authorization Middleware for custom tools that checks for user license and exposes only the allowed tools to the agent. For e.g:
+1. Premium user gets access to Atlassian Jira, Confluence and Fabric Data Agent tools.
+2. Freemium user gets access to only Atlassian Jira and Fabric Data Agent tool.
+
+
 
 ---
 
@@ -64,6 +69,19 @@ The **On-Behalf-Of (OBO) authentication flow** allows Foundry Agents to access t
                  │  (Jira & Confluence)    │      │  Lakehouse (with RLS)   │                       │
                  └─────────────────────────┘      └─────────────────────────┘                       │
 ```
+
+This architecture uses a single agent with multiple MCP tools to access data from both Atlassian and Microsoft Fabric Lakehouse.
+Here is example prompt used by the agent to determine which tool to use:
+
+```
+You are a tool use assistant.
+You can answer questions based on the tools attached to you. 
+Only use the tools to get information and answer questions.
+If the tool returns URLs, format them as clickable links in markdown.
+Always state the tool you are using.
+If you cannot find the answer using the tools, respond with "I don't know". 
+```
+
 
 ### Key Components
 
@@ -188,6 +206,9 @@ Create test users to demonstrate the OBO flow and row-level security:
 3. **Atlassian Users**: Create corresponding accounts in [Atlassian Cloud](https://www.atlassian.com/software/jira/free)
    - Create sample Jira projects and issues
    - Create sample Confluence spaces and pages
+   - Note down the user unique identifiers (user_sub) to update user_access_list.json in the custom_jira_confluence_mcp_server directory.
+   - Navigate to [Atlassian Admin](https://admin.atlassian.com/) → Users → Select User → URL will have the user ID at the end: e.g.`557058:d665a061-d4e6-4561-a263-202befc4db75`
+   ![alt text](images/image31.png "Atlassian User ID")
 
 4. **Identity Flow**: In the OBO flow:
    - Atlassian user identity is used for Jira/Confluence data access
@@ -388,7 +409,7 @@ Use the Bicep template to deploy Foundry resources with a standard agent project
    | Authorization URL | `https://auth.atlassian.com/authorize` |
    | Token URL | `https://auth.atlassian.com/oauth/token` |
    | Refresh URL | `https://auth.atlassian.com/oauth/token` |
-   | Scopes | `read:jira-user read:jira-work write:jira-work read:confluence-content.all write:confluence-content.all` |
+   | Scopes | `read:me read:jira-user read:jira-work write:jira-work read:confluence-content.all write:confluence-content.all search:confluence` |
 
    > **Note**: Foundry Agent Service initiates the OBO flow and stores the ID Tokens and Access Tokens in its token cache. It sends the access token when the MCP tool is called. The custom MCP server validates the access token and forwards the request to Atlassian REST APIs.
 

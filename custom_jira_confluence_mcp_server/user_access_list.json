@@ -1,0 +1,15 @@
+[
+    {
+        "user_sub": "70121:9f08609e-c464-4125-9d93-96a3bb9ad9c5",
+        "allowed_tools": [
+            "confluence_search_pages",
+            "jira_list_issues"
+        ]
+    },
+    {
+        "user_sub": "557058:d665a061-d4e6-4561-a263-202befc4db75",
+        "allowed_tools": [ 
+            "jira_list_issues"
+        ]
+    }
+]

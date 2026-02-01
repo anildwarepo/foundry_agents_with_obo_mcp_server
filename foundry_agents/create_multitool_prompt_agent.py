@@ -54,18 +54,26 @@ client = AIProjectClient(
 #        Jira Issues: Use the attached Jira MCP tool to fetch Jira issues and provide relevant information.
 #        Confluence Content: Use the attached Confluence MCP tool to lookup Confluence content pages and provide relevant information.
 
+
+agent = client.agents.get(agent_name=agent_name)
+if agent:
+    print(f"Agent already exists (id: {agent.id}, name: {agent.name}), {agent.versions.latest.version} - Deleting it...")
+    client.agents.delete_version(agent_name=agent.name, agent_version=agent.versions.latest.version)
+    print(f"Deleted existing agent (id: {agent.id}, name: {agent.name})")
+
+
 agent = client.agents.create_version(
     agent_name=agent_name,
     definition=PromptAgentDefinition(
         model="gpt-4.1-mini",
         instructions=""" 
-        You are an assistant for Jira, Confluence and Invoice Data.
-        Use the tools provided to you to answer user questions.
-        For questions about Jira Issues: Use the attached Jira MCP tool to fetch Jira issues and provide relevant information.
-        For questions about Confluence Content: Use the attached Confluence MCP tool to lookup Confluence content pages and provide relevant information.
-        For questions about Invoice Data: Use the attached Fabric Data MCP tool to query invoice data and provide relevant information.
+        You are a tool use assistant.
+        You can answer questions based on the tools attached to you. 
+        Only use the tools to get information and answer questions.
+        If the tool returns URLs, format them as clickable links in markdown.
+        Always state the tool you are using.
+        If you cannot find the answer using the tools, respond with "I don't know". 
 
-        Answer questions only for the above domains only the tools provide the relevant data. If the question is outside these domains, respond with "I am sorry, I cannot assist with that."
         """,
         tools=[
             {
