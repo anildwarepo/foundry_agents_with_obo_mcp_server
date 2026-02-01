@@ -40,8 +40,8 @@ The **On-Behalf-Of (OBO) authentication flow** allows Foundry Agents to access t
 1. **Atlassian Integration**: A custom MCP server that wraps Atlassian Jira and Confluence REST APIs with OBO token validation
 2. **Microsoft Fabric Integration**: Using the Fabric Data Agent MCP tool with OBO flow to enforce row-level security on Lakehouse data
 3. **Tool Level Authorization**: Use MCP Authorization Middleware for custom tools that checks for user license and exposes only the allowed tools to the agent. For e.g:
-1. Premium user gets access to Atlassian Jira, Confluence and Fabric Data Agent tools.
-2. Freemium user gets access to only Atlassian Jira and Fabric Data Agent tool.
+   * Premium user gets access to Atlassian Jira, Confluence and Fabric Data Agent tools.
+   * Freemium user gets access to only Atlassian Jira and Fabric Data Agent tool.
 
 
 
