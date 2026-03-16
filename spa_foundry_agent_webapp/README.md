@@ -6,6 +6,11 @@ This project was bootstrapped with [Create React App](https://github.com/faceboo
 
 In the project directory, you can run:
 
+
+C:\repos\foundry_agents_with_obo_mcp_server\spa_foundry_agent_webapp; $env:PORT=3500; npm start
+
+
+
 ### `npm start`
 
 Runs the app in the development mode.\

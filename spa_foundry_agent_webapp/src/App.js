@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import { InteractionRequiredAuthError, InteractionStatus } from "@azure/msal-browser";
-import { foundryLoginRequest } from "./authConfig";
+import { foundryLoginRequest, fabricLoginRequest } from "./authConfig";
 
 const BACKEND_BASE = "http://localhost:8765";
 const DEFAULT_AGENT_NAME = "MultiToolAgentV1";
@@ -40,6 +40,35 @@ function Row({ label, value }) {
   );
 }
 
+function renderMarkdown(text) {
+  // Split text into segments: markdown links and plain text
+  const parts = [];
+  const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = linkRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    parts.push(
+      <a
+        key={match.index}
+        href={match[2]}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: "#93c5fd", textDecoration: "underline" }}
+      >
+        {match[1]}
+      </a>
+    );
+    lastIndex = linkRegex.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts;
+}
+
 function Bubble({ role, text }) {
   const isUser = role === "user";
   return (
@@ -63,7 +92,7 @@ function Bubble({ role, text }) {
           fontSize: 13,
         }}
       >
-        {text}
+        {isUser ? text : renderMarkdown(text)}
       </div>
     </div>
   );
@@ -80,6 +109,14 @@ export default function App() {
 
   const [error, setError] = useState(null);
   const [needsConsent, setNeedsConsent] = useState(false);
+
+  // Scope selection
+  const [selectedScope, setSelectedScope] = useState("foundry");
+  const scopeOptions = {
+    foundry: { label: "AI Foundry", request: foundryLoginRequest, url: "https://ai.azure.com/.default" },
+    fabric: { label: "Fabric", request: fabricLoginRequest, url: "https://api.fabric.microsoft.com/.default" },
+  };
+  const currentScopeRequest = scopeOptions[selectedScope].request;
 
   const [accessToken, setAccessToken] = useState(null);
   const [showToken, setShowToken] = useState(false);
@@ -119,7 +156,7 @@ export default function App() {
     setError(null);
     setNeedsConsent(false);
     setBackendResult(null);
-    await instance.loginRedirect(foundryLoginRequest);
+    await instance.loginRedirect(currentScopeRequest);
   };
 
   const logout = async () => {
@@ -147,7 +184,7 @@ export default function App() {
     setError(null);
     try {
       const res = await instance.acquireTokenSilent({
-        ...foundryLoginRequest,
+        ...currentScopeRequest,
         account,
       });
 
@@ -170,7 +207,7 @@ export default function App() {
     if (!account) return;
     setError(null);
     setNeedsConsent(false);
-    await instance.acquireTokenRedirect({ ...foundryLoginRequest, account });
+    await instance.acquireTokenRedirect({ ...currentScopeRequest, account });
   };
 
   const callBackend = async () => {
@@ -186,7 +223,10 @@ export default function App() {
       if (!token) return;
 
       const apiRes = await fetch(`${BACKEND_BASE}/agents/${encodeURIComponent(agentName)}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "X-Token-Scope": scopeOptions[selectedScope].url,
+        },
       });
 
       const data = await apiRes.json().catch(() => ({}));
@@ -222,6 +262,7 @@ export default function App() {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
+        "X-Token-Scope": scopeOptions[selectedScope].url,
       },
       body: JSON.stringify(body),
     });
@@ -240,12 +281,14 @@ export default function App() {
       // Keep chain moving from this response id
       setPreviousResponseId(data.response_id || null);
 
+      const hasResponseId = !!data.response_id;
       setMessages((m) => [
         ...m,
         {
           role: "assistant",
-          text:
-            "OAuth consent required to access the MCP tools. Open the consent link below, complete sign-in, then click “I completed sign-in”.",
+          text: hasResponseId
+            ? "OAuth consent required to access the MCP tools. Open the consent link below, complete sign-in, then click \u201cI completed sign-in\u201d."
+            : "MCP tool authentication expired. Open the consent link below to re-authenticate, then resend your question.",
         },
       ]);
       return;
@@ -307,24 +350,46 @@ export default function App() {
 
   // User completed OAuth consent in the external tab; continue the Foundry response chain.
   const resumeAfterOauthConsent = async () => {
-    if (!pendingResponseIdForOauth || chatLoading) return;
+    if (chatLoading) return;
 
     setError(null);
     setChatLoading(true);
 
-    try {
-      const { ok, data, error: err } = await postChat({
-        agent_name: agentName,
-        previous_response_id: pendingResponseIdForOauth,
-        action: "continue",
-      });
+    // Clear OAuth UI state
+    setOauthConsentLink(null);
 
+    try {
+      let result;
+
+      if (pendingResponseIdForOauth) {
+        // Normal flow: we have a response_id from Foundry, continue the chain
+        result = await postChat({
+          agent_name: agentName,
+          previous_response_id: pendingResponseIdForOauth,
+          action: "continue",
+        });
+      } else {
+        // Error-recovery flow: no response_id, resend the last user message
+        const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+        if (!lastUserMsg?.text) {
+          setError("No previous message to resend. Please type your question again.");
+          setChatLoading(false);
+          return;
+        }
+        result = await postChat({
+          agent_name: agentName,
+          message: lastUserMsg.text,
+        });
+      }
+
+      const { ok, data, error: err } = result;
       if (!ok) throw new Error(err || "Continue after OAuth consent failed");
       applyChatResponse(data);
     } catch (e) {
       setError(e?.message || String(e));
     } finally {
       setChatLoading(false);
+      setPendingResponseIdForOauth(null);
     }
   };
 
@@ -356,12 +421,13 @@ export default function App() {
   };
 
   // After authentication completes (and MSAL is idle), attempt silent token acquisition once.
+  // Also re-acquire when scope selection changes.
   useEffect(() => {
     if (!isAuthenticated || !account) return;
     if (inProgress !== InteractionStatus.None) return;
     tryGetTokenSilent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, account, inProgress]);
+  }, [isAuthenticated, account, inProgress, selectedScope]);
 
   const idClaims = account?.idTokenClaims;
 
@@ -386,9 +452,27 @@ export default function App() {
         >
           <div>
             <h1 style={{ margin: 0 }}>Foundry Auth Demo</h1>
-            <p style={{ marginTop: 6, color: "#475569" }}>
-              Scope requested: <code>https://ai.azure.com/.default</code>
-            </p>
+            <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
+              <label style={{ color: "#475569" }}>Scope:</label>
+              <select
+                value={selectedScope}
+                onChange={(e) => {
+                  setSelectedScope(e.target.value);
+                  setAccessToken(null);
+                  setTokenClaims(null);
+                }}
+                style={{
+                  padding: "4px 8px",
+                  borderRadius: 6,
+                  border: "1px solid #cbd5e1",
+                  fontSize: 13,
+                }}
+              >
+                {Object.entries(scopeOptions).map(([key, opt]) => (
+                  <option key={key} value={key}>{opt.label} ({opt.url})</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {!isAuthenticated ? (
@@ -431,7 +515,7 @@ export default function App() {
             <h2 style={{ marginTop: 0, fontSize: 16 }}>What this does</h2>
             <ul style={{ margin: "8px 0 0 18px", color: "#334155" }}>
               <li>Redirect sign-in with MSAL</li>
-              <li>Requests an access token for <code>https://ai.azure.com/.default</code></li>
+              <li>Requests an access token for the selected scope</li>
               <li>Calls your backend with <code>Authorization: Bearer &lt;token&gt;</code></li>
               <li>Chat UI supports MCP approvals + OAuth consent links</li>
             </ul>
@@ -452,21 +536,70 @@ export default function App() {
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                 <div>
                   <h2 style={{ marginTop: 0, fontSize: 16 }}>Chat</h2>
-                  <p style={{ margin: "6px 0 0 0", color: "#475569", fontSize: 13 }}>
-                    Agent:{" "}
-                    <input
-                      value={agentName}
-                      onChange={(e) => setAgentName(e.target.value)}
-                      style={{
-                        border: "1px solid #e2e8f0",
-                        borderRadius: 10,
-                        padding: "6px 8px",
-                        fontSize: 13,
-                        width: 320,
-                        maxWidth: "100%",
-                      }}
-                    />
-                  </p>
+                  <div style={{ margin: "6px 0 0 0", color: "#475569", fontSize: 13, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      Agent:{" "}
+                      <input
+                        value={agentName}
+                        onChange={(e) => setAgentName(e.target.value)}
+                        style={{
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 10,
+                          padding: "6px 8px",
+                          fontSize: 13,
+                          width: 220,
+                          maxWidth: "100%",
+                        }}
+                      />
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      Quick question:{" "}
+                      <select
+                        defaultValue=""
+                        onChange={(e) => {
+                          if (e.target.value && !chatLoading && !needsConsent && !oauthConsentLink) {
+                            const question = e.target.value;
+                            e.target.value = ""; // Reset dropdown
+                            // Send the question
+                            setChatInput("");
+                            setError(null);
+                            setChatLoading(true);
+                            setMessages((m) => [...m, { role: "user", text: question }]);
+                            postChat({
+                              agent_name: agentName,
+                              message: question,
+                              previous_response_id: previousResponseId,
+                            }).then(({ ok, data, error: err }) => {
+                              if (!ok) {
+                                setError(err || "Chat request failed");
+                              } else {
+                                applyChatResponse(data);
+                              }
+                            }).catch((err) => {
+                              setError(err?.message || String(err));
+                            }).finally(() => {
+                              setChatLoading(false);
+                            });
+                          }
+                        }}
+                        disabled={chatLoading || needsConsent || !!oauthConsentLink}
+                        style={{
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 10,
+                          padding: "6px 8px",
+                          fontSize: 13,
+                          minWidth: 180,
+                        }}
+                      >
+                        <option value="">Select...</option>
+                        <option value="invoice count">invoice count</option>
+                        <option value="count of items">count of items</option>
+                        <option value="count of rows in the table">count of rows in the table</option>
+                        <option value="show me my jira issues">show me my jira issues</option>
+                        <option value="which page is talking about oauth?">which page is talking about oauth?</option>
+                      </select>
+                    </label>
+                  </div>
                 </div>
 
                 <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>

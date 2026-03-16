@@ -1,0 +1,4 @@
+SELECT c.object FROM c 
+
+where c.object.item_resource.role = 'user'
+order by c._ts desc

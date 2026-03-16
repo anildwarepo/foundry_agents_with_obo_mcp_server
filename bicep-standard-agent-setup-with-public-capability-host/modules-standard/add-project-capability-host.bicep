@@ -25,7 +25,6 @@ resource accountCapabilityHost 'Microsoft.CognitiveServices/accounts/capabilityH
    parent: account
    properties: {
      capabilityHostKind: 'Agents'
-     enablePublicHostingEnvironment: true
 
    }
 }
